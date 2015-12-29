@@ -132,7 +132,9 @@ class ImageAugmenter {
 
     // normal augmentation by affine transformation.
     if (param_.max_rotate_angle > 0 || param_.max_shear_ratio > 0.0f
-        || param_.rotate > 0 || rotate_list_.size() > 0) {
+        || param_.rotate > 0 || rotate_list_.size() > 0 || param_.max_random_scale != 1.0
+        || param_.min_random_scale != 1.0 || param_.max_aspect_ratio != 0.0f
+        || param_.max_img_size != 1e10f || param_.min_img_size != 0.0f) {
       std::uniform_real_distribution<float> rand_uniform(0, 1);
       // shear
       float s = rand_uniform(*prnd) * param_.max_shear_ratio * 2 - param_.max_shear_ratio;
@@ -192,20 +194,20 @@ class ImageAugmenter {
         y /= 2; x /= 2;
       }
       cv::Rect roi(x, y, rand_crop_size, rand_crop_size);
-      cv::resize(res(roi), res, cv::Size(param_.data_shape[1], param_.data_shape[2]));
+      cv::resize(res(roi), res, cv::Size(param_.data_shape[2], param_.data_shape[1]));
     } else {
-      CHECK(static_cast<index_t>(res.cols) >= param_.data_shape[1]
-            && static_cast<index_t>(res.rows) >= param_.data_shape[2])
+      CHECK(static_cast<index_t>(res.rows) >= param_.data_shape[1]
+            && static_cast<index_t>(res.cols) >= param_.data_shape[2])
           << "input image size smaller than input shape";
-      index_t y = res.rows - param_.data_shape[2];
-      index_t x = res.cols - param_.data_shape[1];
+      index_t y = res.rows - param_.data_shape[1];
+      index_t x = res.cols - param_.data_shape[2];
       if (param_.rand_crop != 0) {
         y = std::uniform_int_distribution<index_t>(0, y)(*prnd);
         x = std::uniform_int_distribution<index_t>(0, x)(*prnd);
       } else {
         y /= 2; x /= 2;
       }
-      cv::Rect roi(x, y, param_.data_shape[1], param_.data_shape[2]);
+      cv::Rect roi(x, y, param_.data_shape[2], param_.data_shape[1]);
       res = res(roi);
     }
     return res;

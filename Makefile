@@ -28,7 +28,7 @@ CFLAGS = -DMSHADOW_FORCE_STREAM $(WARNFLAGS)
 
 # CFLAGS for debug
 ifeq ($(DEBUG), 1)
-	CFLAGS += -g -O0
+	CFLAGS += -g -O0 -DDMLC_LOG_FATAL_THROW=0
 else
 	CFLAGS += -O3
 endif
@@ -98,11 +98,32 @@ OBJ = $(patsubst src/%.cc, build/%.o, $(SRC))
 CUSRC = $(wildcard src/*/*.cu)
 CUOBJ = $(patsubst src/%.cu, build/%_gpu.o, $(CUSRC))
 
-LIB_DEP += $(DMLC_CORE)/libdmlc.a
-ALL_DEP = $(OBJ) $(LIB_DEP)
-ifeq ($(USE_CUDA), 1)
-	ALL_DEP += $(CUOBJ)
+ifneq ($(EXTRA_OPERATORS),)
+	EXTRA_SRC = $(wildcard $(EXTRA_OPERATORS)/*.cc $(EXTRA_OPERATORS)/*/*.cc)
+	EXTRA_OBJ = $(patsubst $(EXTRA_OPERATORS)/%.cc, $(EXTRA_OPERATORS)/build/%.o, $(EXTRA_SRC))
+	EXTRA_CUSRC = $(wildcard $(EXTRA_OPERATORS)/*.cu $(EXTRA_OPERATORS)/*/*.cu)
+	EXTRA_CUOBJ = $(patsubst $(EXTRA_OPERATORS)/%.cu, $(EXTRA_OPERATORS)/build/%_gpu.o, $(EXTRA_CUSRC))
+else
+	EXTRA_SRC =
+	EXTRA_OBJ =
+	EXTRA_CUSRC =
+	EXTRA_CUOBJ =
 endif
+
+LIB_DEP += $(DMLC_CORE)/libdmlc.a
+ALL_DEP = $(OBJ) $(EXTRA_OBJ) $(LIB_DEP)
+ifeq ($(USE_CUDA), 1)
+	ALL_DEP += $(CUOBJ) $(EXTRA_CUOBJ)
+	LDFLAGS += -lcuda
+endif
+
+ifeq ($(USE_NVRTC), 1)
+	LDFLAGS += -lnvrtc
+	CFLAGS += -DMXNET_USE_NVRTC=1
+else
+	CFLAGS += -DMXNET_USE_NVRTC=0
+endif
+
 
 build/%.o: src/%.cc
 	@mkdir -p $(@D)
@@ -111,8 +132,18 @@ build/%.o: src/%.cc
 
 build/%_gpu.o: src/%.cu
 	@mkdir -p $(@D)
-	$(NVCC) $(NVCCFLAGS) -Xcompiler "$(CFLAGS)" -M build/$*_gpu.o $< >build/$*_gpu.d
+	$(NVCC) $(NVCCFLAGS) -Xcompiler "$(CFLAGS)" -M -MT build/$*_gpu.o $< >build/$*_gpu.d
 	$(NVCC) -c -o $@ $(NVCCFLAGS) -Xcompiler "$(CFLAGS)" $<
+
+$(EXTRA_OPERATORS)/build/%.o: $(EXTRA_OPERATORS)/%.cc
+	@mkdir -p $(@D)
+	$(CXX) -std=c++0x $(CFLAGS) -Isrc/operator -MM -MT $(EXTRA_OPERATORS)/build/$*.o $< >$(EXTRA_OPERATORS)/build/$*.d
+	$(CXX) -std=c++0x -c $(CFLAGS) -Isrc/operator -c $< -o $@
+
+$(EXTRA_OPERATORS)/build/%_gpu.o: $(EXTRA_OPERATORS)/%.cu
+	@mkdir -p $(@D)
+	$(NVCC) $(NVCCFLAGS) -Xcompiler "$(CFLAGS) -Isrc/operator" -M -MT $(EXTRA_OPERATORS)/build/$*_gpu.o $< >$(EXTRA_OPERATORS)/build/$*_gpu.d
+	$(NVCC) -c -o $@ $(NVCCFLAGS) -Xcompiler "$(CFLAGS) -Isrc/operator" $<
 
 lib/libmxnet.a: $(ALL_DEP)
 	@mkdir -p $(@D)
@@ -141,7 +172,7 @@ include tests/cpp/unittest.mk
 test: $(TEST)
 
 lint: rcpplint
-	python dmlc-core/scripts/lint.py mxnet ${LINT_LANG} include src scripts python predict/python
+	python2 dmlc-core/scripts/lint.py mxnet ${LINT_LANG} include src scripts python predict/python
 
 doc: doxygen
 
@@ -150,7 +181,7 @@ doxygen:
 
 # R related shortcuts
 rcpplint:
-	python dmlc-core/scripts/lint.py mxnet-rcpp ${LINT_LANG} R-package/src
+	python2 dmlc-core/scripts/lint.py mxnet-rcpp ${LINT_LANG} R-package/src
 
 rcppexport:
 	Rscript -e "require(mxnet); mxnet::mxnet.export(\"R-package\")"
@@ -165,7 +196,7 @@ rpkg:	roxygen
 	mkdir -p R-package/inst/include
 	cp -rf include/* R-package/inst/include
 	cp -rf dmlc-core/include/* R-package/inst/include/
-	R CMD build R-package
+	R CMD build --no-build-vignettes R-package
 
 clean:
 	$(RM) -r build lib bin *~ */*~ */*/*~ */*/*/*~
@@ -176,3 +207,6 @@ clean_all: clean
 
 -include build/*.d
 -include build/*/*.d
+ifneq ($(EXTRA_OPERATORS),)
+	-include $(EXTRA_OPERATORS)/build/*.d
+endif

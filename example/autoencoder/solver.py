@@ -18,15 +18,16 @@ class Monitor(object):
         if i%self.interval == 0 and logging.getLogger().isEnabledFor(self.level):
             for key in sorted(internals.keys()):
                 arr = internals[key]
-                logging.log(self.level, 'iter:%d  param:%s\t\tstat(%s):%s'%(i, key, self.stat.__name__, str(self.stat(arr.asnumpy()))))
+                logging.log(self.level, 'Iter:%d  param:%s\t\tstat(%s):%s'%(i, key, self.stat.__name__, str(self.stat(arr.asnumpy()))))
 
     def backward_end(self, i, weights, grads, metric=None):
         if i%self.interval == 0 and logging.getLogger().isEnabledFor(self.level):
             for key in sorted(grads.keys()):
                 arr = grads[key]
-                logging.log(self.level, 'iter:%d  param:%s\t\tstat(%s):%s\t\tgrad_stat:%s'%(i, key, self.stat.__name__, str(self.stat(weights[key].asnumpy())), str(self.stat(arr.asnumpy()))))
-            if metric is not None:
-                logging.info('Iter:%d metric:%f'%(i, metric.get()[1]))
+                logging.log(self.level, 'Iter:%d  param:%s\t\tstat(%s):%s\t\tgrad_stat:%s'%(i, key, self.stat.__name__, str(self.stat(weights[key].asnumpy())), str(self.stat(arr.asnumpy()))))
+        if i%self.interval == 0 and metric is not None:
+                logging.log(logging.INFO, 'Iter:%d metric:%f'%(i, metric.get()[1]))
+                metric.reset()
 
 class Solver(object):
     def __init__(self, optimizer, **kwargs):
@@ -52,7 +53,7 @@ class Solver(object):
     def set_iter_start_callback(self, callback):
         self.iter_start_callback = callback
 
-    def solve(self, xpu, sym, args, args_grad,
+    def solve(self, xpu, sym, args, args_grad, auxs,
               data_iter, begin_iter, end_iter, args_lrmult={}, debug = False):
         input_desc = data_iter.provide_data + data_iter.provide_label
         input_names = [k for k, shape in input_desc]
@@ -71,7 +72,7 @@ class Solver(object):
                         x = mx.symbol.BlockGrad(x, name=blob_names[i])
                     sym_group.append(x)
             sym = mx.symbol.Group(sym_group)
-        exe = sym.bind(xpu, args=args, args_grad=args_grad)
+        exe = sym.bind(xpu, args=args, args_grad=args_grad, aux_states=auxs)
 
         assert len(sym.list_arguments()) == len(exe.grad_arrays)
         update_dict = {name: nd for name, nd in zip(sym.list_arguments(), exe.grad_arrays) if nd}
@@ -81,7 +82,7 @@ class Solver(object):
 
         output_dict = {}
         output_buff = {}
-        internal_dict = {}
+        internal_dict = dict(zip(input_names, input_buffs))
         for key, arr in zip(sym.list_outputs(), exe.outputs):
             if key in output_names:
                 output_dict[key] = arr
@@ -92,7 +93,8 @@ class Solver(object):
         data_iter.reset()
         for i in range(begin_iter, end_iter):
             if self.iter_start_callback is not None:
-                self.iter_start_callback(i)
+                if self.iter_start_callback(i):
+                    return
             try:
                 batch = data_iter.next()
             except:
@@ -107,7 +109,6 @@ class Solver(object):
                 output_dict[key].copyto(output_buff[key])
 
             exe.backward()
-            self.optimizer.begin_epoch(i)
             for key, arr in update_dict.items():
                 self.updater(key, arr, args[key])
 
@@ -119,12 +120,13 @@ class Solver(object):
                 self.monitor.backward_end(i, args, update_dict, self.metric)
 
             if self.iter_end_callback is not None:
-                self.iter_end_callback(i) 
+                if self.iter_end_callback(i):
+                    return
             exe.outputs[0].wait_to_read()
 
 
 
 
 
-        
+
 

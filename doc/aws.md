@@ -1,6 +1,6 @@
 # Setup an AWS GPU Cluster from Stratch
 
-In this documents we give a step-by-step tutorial on how to setup Amazon AWS for
+In this document we give a step-by-step tutorial on how to set up Amazon AWS for
 MXNet. In particular, we will address:
 
 - [Use Amazon S3 to host data](#use-amazon-s3-to-host-data)
@@ -10,14 +10,14 @@ MXNet. In particular, we will address:
 
 ## Use Amazon S3 to host data
 
-Amazon S3 is distributed data storage, which is quite convenient for host large
-scale datasets. In order to S3, we need first to get the
+Amazon S3 is distributed data storage, which is quite convenient for hosting large
+scale datasets. In order to use S3, we need first to get the
 [AWS credentials](http://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSGettingStartedGuide/AWSCredentials.html)),
-which includes a `ACCESS_KEY_ID` and a `SECRET_ACCESS_KEY`.
+which includes an `ACCESS_KEY_ID` and a `SECRET_ACCESS_KEY`.
 
 In order for MXNet to use S3, we only need to set the environment variables `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` properly. For example, we can add the following two lines in
-`~/.bashrc` (replace the strings with the correct ones)
+`~/.bashrc` (replacing the strings with the correct ones)
 
 ```bash
 export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
@@ -42,12 +42,12 @@ MXNet requires the following libraries
 - `opencv` for image augmentations
 - `curl` and `openssl` for read/write Amazon S3
 
-Installing `CUDA` on EC2 instances needs a little bit effects. Caffe has a nice
+Installing `CUDA` on EC2 instances needs a little bit of effort. Caffe has a nice
 [tutorial](https://github.com/BVLC/caffe/wiki/Install-Caffe-on-EC2-from-scratch-(Ubuntu,-CUDA-7,-cuDNN))
 on how to install CUDA 7.0 on Ubuntu 14.04 (Note: we tried CUDA 7.5 on Nov 7
 2015, but it is problematic.)
 
-The reset can be installed by the package manager. For example, on Ubuntu:
+The rest can be installed by the package manager. For example, on Ubuntu:
 
 ```
 sudo apt-get update
@@ -74,7 +74,7 @@ echo "USE_S3=1" >>config.mk
 make -j8
 ```
 
-Test if every goes well, we train a convolution neural network on MNIST using GPU:
+In order to test whether everything has installed properly, we train a convolution neural network on MNIST using GPU:
 
 ```bash
 python tests/python/gpu/test_conv.py
@@ -101,8 +101,8 @@ with dependencies installed. There are two suggestions:
 1. Make all slaves' ports are accessible (same for the root) by setting **type: All TCP**,
    **Source: Anywhere** in **Configure Security Group**
 
-2. Use the same `pem` as the root machine to access all slaves machines. And
-   then cpy the `pem` file into root machine's `~/.ssh/id_rsa`, it all slaves
+2. Use the same `pem` as the root machine to access all slaves machine, and
+   then copy the `pem` file into root machine's `~/.ssh/id_rsa`, it all slaves
    machines are ssh-able from the root.
 
 Now we run the previous CNN on multiple machines. Assume we are on a working
@@ -119,7 +119,7 @@ directory of the root machine, such as `~/train`, and MXNet is built as `~/mxnet
   And then copy the training program:
 
   ```bash
-  cp ~/mxnet/example/distributed-training/*mnist* .
+  cp ~/mxnet/example/image-classification/*.py .
   ```
 
 2. Prepare a host file with all slaves's private IPs. For example, `cat hosts`
@@ -129,13 +129,11 @@ directory of the root machine, such as `~/train`, and MXNet is built as `~/mxnet
   172.30.0.171
   ```
 
-3. Assume there are 10 slaves, then train the CNN using 10 workers and 10 servers:
+3. Assume there are 2 machines, then train the CNN using 2 workers:
 
   ```bash
-  ~/mxnet/tracker/dmlc_ssh.sh -n 10 -s 10 -H hosts python train_mnist.py
+  ../../tools/launch.py -n 2 -H hosts --sync-dir /tmp/mxnet python train_mnist.py --kv-store dist_sync
   ```
-
-Here we use a simple ```dmlc_ssh``` that runs DMLC jobs without any cluster frameworks.
 
 Note: Sometimes the jobs lingers at the slave machines even we pressed `Ctrl-c`
 at the root node. We can kill them by
@@ -145,8 +143,7 @@ cat hosts | xargs -I{} ssh -o StrictHostKeyChecking=no {} 'uname -a; pgrep pytho
 ```
 
 Note: The above example is quite simple to train and therefore is not a good
-benchmark for the distributed training. We may consider other examples such as
-[imagenet using inception network](https://github.com/dmlc/mxnet/tree/master/example/distributed-training/train_imagenet.py)
+benchmark for the distributed training. We may consider other [examples](https://github.com/dmlc/mxnet/tree/master/example/image-classification).
 
 ## More NOTE
 ### Use multiple data shards
@@ -154,5 +151,3 @@ Usually it is common to pack dataset into multiple files, especially when we pac
 
 ### Use YARN, MPI, SGE
 While ssh can be simple for cases when we do not have a cluster scheduling framework. MXNet is designed to be able to port to various platforms.  We also provide other scripts in [tracker](https://github.com/dmlc/dmlc-core/tree/master/tracker) to run on other cluster frameworks, including Hadoop(YARN) and SGE. Your contribution is more than welcomed to provide examples to run mxnet on your favorite distributed platform.
-  
-
